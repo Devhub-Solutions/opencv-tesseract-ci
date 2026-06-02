@@ -52,7 +52,7 @@ RUN curl -L "https://github.com/opencv/opencv/archive/${OPENCV_VERSION}.tar.gz" 
 FROM eclipse-temurin:17-jre-jammy
 
 RUN apt-get update && apt-get install -y \
-    libtbb2 libgomp1 libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 && \
+    libtbb12 libgomp1 libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy native libs from builder
