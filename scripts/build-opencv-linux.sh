@@ -33,10 +33,16 @@ fi
 mkdir -p "${BUILD_DIR}"
 cd "${BUILD_DIR}"
 
+# Prefer the freshly built Tesseract/Leptonica under /usr/local over any
+# distro-provided pkg-config files or libraries that may exist on the runner.
+export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+export CMAKE_PREFIX_PATH="/usr/local:${CMAKE_PREFIX_PATH:-}"
+
 # Configure with Java support
 cmake "${SOURCE_DIR}/opencv-${OPENCV_VERSION}" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="/usr/local" \
+    -DCMAKE_PREFIX_PATH="/usr/local" \
     \
     `# Java JNI support` \
     -DBUILD_opencv_java=ON \
@@ -69,8 +75,9 @@ cmake "${SOURCE_DIR}/opencv-${OPENCV_VERSION}" \
     \
     `# Tesseract integration via opencv_text` \
     -DWITH_TESSERACT=ON \
-    -DTESSERACT_INCLUDE_DIR="/usr/local/include" \
-    -DTESSERACT_LIBRARY="/usr/local/lib/libtesseract.so" \
+    -DTesseract_INCLUDE_DIR="/usr/local/include" \
+    -DTesseract_LIBRARY="/usr/local/lib/libtesseract.so" \
+    -DLept_LIBRARY="/usr/local/lib/liblept.so" \
     \
     `# Other dependencies` \
     -DWITH_FFMPEG=ON \

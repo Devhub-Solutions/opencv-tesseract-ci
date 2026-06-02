@@ -51,11 +51,16 @@ fi
 mkdir -p "${BUILD_DIR}"
 cd "${BUILD_DIR}"
 
+# Prefer the MSYS2 libraries installed by the previous Leptonica/Tesseract steps.
+export PKG_CONFIG_PATH="${INSTALL_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+export CMAKE_PREFIX_PATH="${INSTALL_PREFIX}:${CMAKE_PREFIX_PATH:-}"
+
 # Configure with Java support
 cmake "${SOURCE_DIR}/opencv-${OPENCV_VERSION}" \
     "${CMAKE_GENERATOR_ARGS[@]}" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="${INSTALL_PREFIX}" \
+    -DCMAKE_PREFIX_PATH="${INSTALL_PREFIX}" \
     \
     `# Java JNI support` \
     -DBUILD_opencv_java=ON \
@@ -92,8 +97,9 @@ cmake "${SOURCE_DIR}/opencv-${OPENCV_VERSION}" \
     \
     `# Tesseract integration` \
     -DWITH_TESSERACT=ON \
-    -DTESSERACT_INCLUDE_DIR="${INSTALL_PREFIX}/include" \
-    -DTESSERACT_LIBRARY="${INSTALL_PREFIX}/lib/libtesseract.dll.a" \
+    -DTesseract_INCLUDE_DIR="${INSTALL_PREFIX}/include" \
+    -DTesseract_LIBRARY="${INSTALL_PREFIX}/lib/libtesseract.dll.a" \
+    -DLept_LIBRARY="${INSTALL_PREFIX}/lib/liblept.dll.a" \
     \
     `# Dependencies` \
     -DWITH_FFMPEG=OFF \

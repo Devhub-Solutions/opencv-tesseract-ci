@@ -34,10 +34,16 @@ fi
 mkdir -p "${BUILD_DIR}"
 cd "${BUILD_DIR}"
 
+# Prefer the freshly built Tesseract/Leptonica under /usr/local over Homebrew
+# or system metadata, and avoid FFmpeg API drift in OpenCV 4.10 builds.
+export PKG_CONFIG_PATH="${INSTALL_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+export CMAKE_PREFIX_PATH="${INSTALL_PREFIX}:${CMAKE_PREFIX_PATH:-}"
+
 # Configure with Java support
 cmake "${SOURCE_DIR}/opencv-${OPENCV_VERSION}" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="${INSTALL_PREFIX}" \
+    -DCMAKE_PREFIX_PATH="${INSTALL_PREFIX}" \
     -DCMAKE_OSX_ARCHITECTURES="x86_64" \
     \
     `# Java JNI support` \
@@ -75,11 +81,12 @@ cmake "${SOURCE_DIR}/opencv-${OPENCV_VERSION}" \
     \
     `# Tesseract integration` \
     -DWITH_TESSERACT=ON \
-    -DTESSERACT_INCLUDE_DIR="${INSTALL_PREFIX}/include" \
-    -DTESSERACT_LIBRARY="${INSTALL_PREFIX}/lib/libtesseract.dylib" \
+    -DTesseract_INCLUDE_DIR="${INSTALL_PREFIX}/include" \
+    -DTesseract_LIBRARY="${INSTALL_PREFIX}/lib/libtesseract.dylib" \
+    -DLept_LIBRARY="${INSTALL_PREFIX}/lib/liblept.dylib" \
     \
     `# macOS specific` \
-    -DWITH_FFMPEG=ON \
+    -DWITH_FFMPEG=OFF \
     -DWITH_GTK=OFF \
     -DWITH_V4L=OFF \
     -DWITH_EIGEN=ON \
