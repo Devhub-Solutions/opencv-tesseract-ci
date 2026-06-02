@@ -33,7 +33,7 @@ public class TesseractOcr implements AutoCloseable {
         if (!NativeLibraryLoader.isTesseractLoaded()) {
             NativeLibraryLoader.loadTesseract();
         }
-        this.handle = TessAPI.INSTANCE.TessBaseAPICreate().getNativePeer();
+        this.handle = com.sun.jna.Pointer.nativeValue(TessAPI.INSTANCE.TessBaseAPICreate());
         if (this.handle == 0) {
             throw new RuntimeException("Failed to create Tesseract base API");
         }

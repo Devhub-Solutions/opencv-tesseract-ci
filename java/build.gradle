@@ -19,8 +19,11 @@ dependencies {
     // JNA for Tesseract bindings
     api 'net.java.dev.jna:jna:5.14.0'
 
-    // OpenCV JAR (placed in libs/ from CI artifacts)
-    implementation files('libs/opencv-4100.jar')
+    // Optional OpenCV JAR (placed in libs/ from CI artifacts).
+    // The loader does not compile against OpenCV classes, so keep local CI/tests green before native artifacts exist.
+    if (file('libs/opencv-4100.jar').exists()) {
+        implementation files('libs/opencv-4100.jar')
+    }
 
     // Testing
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
@@ -45,7 +48,7 @@ jar {
     archiveBaseName = 'opencv-tesseract-native'
 
     from {
-        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+        configurations.runtimeClasspath.findAll { it.exists() }.collect { it.isDirectory() ? it : zipTree(it) }
     }
 
     manifest {
@@ -59,7 +62,7 @@ task fatJar(type: Jar) {
     archiveClassifier = 'all'
 
     from {
-        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+        configurations.runtimeClasspath.findAll { it.exists() }.collect { it.isDirectory() ? it : zipTree(it) }
     }
 
     with jar

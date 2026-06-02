@@ -3,6 +3,7 @@ package com.nativeloader;
 import java.io.*;
 import java.net.URL;
 import java.nio.file.*;
+import java.nio.file.attribute.PosixFilePermission;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
