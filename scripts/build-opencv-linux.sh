@@ -74,6 +74,7 @@ cmake "${SOURCE_DIR}/opencv-${OPENCV_VERSION}" \
     \
     `# Other dependencies` \
     -DWITH_FFMPEG=ON \
+    -DWITH_GSTREAMER=OFF \
     -DWITH_GTK=OFF \
     -DWITH_V4L=OFF \
     -DWITH_EIGEN=ON \

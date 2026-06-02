@@ -14,6 +14,15 @@ echo "========================================"
 echo "Building OpenCV ${OPENCV_VERSION} on Windows (with Java JNI)"
 echo "========================================"
 
+if command -v mingw32-make >/dev/null 2>&1; then
+    CMAKE_GENERATOR_ARGS=(-G "MinGW Makefiles" -DCMAKE_MAKE_PROGRAM="$(command -v mingw32-make)")
+elif command -v make >/dev/null 2>&1; then
+    CMAKE_GENERATOR_ARGS=(-G "Unix Makefiles" -DCMAKE_MAKE_PROGRAM="$(command -v make)")
+else
+    echo "ERROR: neither mingw32-make nor make was found on PATH" >&2
+    exit 1
+fi
+
 # Find JAVA_HOME
 JAVA_HOME_WIN="${JAVA_HOME}"
 JAVA_HOME_UNIX="$(cygpath -u "${JAVA_HOME}")"
@@ -42,9 +51,9 @@ fi
 mkdir -p "${BUILD_DIR}"
 cd "${BUILD_DIR}"
 
-# Configure with Java support - use MinGW Makefiles
+# Configure with Java support
 cmake "${SOURCE_DIR}/opencv-${OPENCV_VERSION}" \
-    -G "MinGW Makefiles" \
+    "${CMAKE_GENERATOR_ARGS[@]}" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="${INSTALL_PREFIX}" \
     \
