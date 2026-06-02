@@ -14,6 +14,15 @@ echo "========================================"
 echo "Building Tesseract ${TESSERACT_VERSION} on Windows (MSYS2)"
 echo "========================================"
 
+if command -v mingw32-make >/dev/null 2>&1; then
+    CMAKE_GENERATOR_ARGS=(-G "MinGW Makefiles" -DCMAKE_MAKE_PROGRAM="$(command -v mingw32-make)")
+elif command -v make >/dev/null 2>&1; then
+    CMAKE_GENERATOR_ARGS=(-G "Unix Makefiles" -DCMAKE_MAKE_PROGRAM="$(command -v make)")
+else
+    echo "ERROR: neither mingw32-make nor make was found on PATH" >&2
+    exit 1
+fi
+
 # Download source if not cached
 if [ ! -d "${SOURCE_DIR}/tesseract-${TESSERACT_VERSION}" ]; then
     mkdir -p "${SOURCE_DIR}"
@@ -27,7 +36,7 @@ fi
 mkdir -p "${BUILD_DIR}"
 cd "${BUILD_DIR}"
 cmake "${SOURCE_DIR}/tesseract-${TESSERACT_VERSION}" \
-    -G "MinGW Makefiles" \
+    "${CMAKE_GENERATOR_ARGS[@]}" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="${INSTALL_PREFIX}" \
     -DBUILD_SHARED_LIBS=ON \
