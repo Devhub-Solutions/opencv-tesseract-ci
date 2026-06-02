@@ -75,9 +75,12 @@ cmake "${SOURCE_DIR}/opencv-${OPENCV_VERSION}" \
     \
     `# Tesseract integration via opencv_text` \
     -DWITH_TESSERACT=ON \
+    -DTesseract_FOUND=TRUE \
     -DTesseract_INCLUDE_DIR="/usr/local/include" \
+    -DTesseract_INCLUDE_DIRS="/usr/local/include" \
     -DTesseract_LIBRARY="/usr/local/lib/libtesseract.so" \
-    -DLept_LIBRARY="/usr/local/lib/liblept.so" \
+    -DLept_LIBRARY="/usr/local/lib/libleptonica.so" \
+    -DTesseract_LIBRARIES="/usr/local/lib/libtesseract.so;/usr/local/lib/libleptonica.so" \
     \
     `# Other dependencies` \
     -DWITH_FFMPEG=ON \

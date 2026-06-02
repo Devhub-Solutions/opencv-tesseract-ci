@@ -97,9 +97,12 @@ cmake "${SOURCE_DIR}/opencv-${OPENCV_VERSION}" \
     \
     `# Tesseract integration` \
     -DWITH_TESSERACT=ON \
+    -DTesseract_FOUND=TRUE \
     -DTesseract_INCLUDE_DIR="${INSTALL_PREFIX}/include" \
+    -DTesseract_INCLUDE_DIRS="${INSTALL_PREFIX}/include" \
     -DTesseract_LIBRARY="${INSTALL_PREFIX}/lib/libtesseract.dll.a" \
-    -DLept_LIBRARY="${INSTALL_PREFIX}/lib/liblept.dll.a" \
+    -DLept_LIBRARY="${INSTALL_PREFIX}/lib/libleptonica.dll.a" \
+    -DTesseract_LIBRARIES="${INSTALL_PREFIX}/lib/libtesseract.dll.a;${INSTALL_PREFIX}/lib/libleptonica.dll.a" \
     \
     `# Dependencies` \
     -DWITH_FFMPEG=OFF \
