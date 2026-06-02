@@ -1,0 +1,31 @@
+# Build artifacts
+artifacts/
+build/
+target/
+*.o
+*.a
+*.so
+*.dll
+*.dylib
+*.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Source caches (built by CI)
+opencv-source/
+tesseract-source/
+leptonica-source/
+
+# Temp
+*.tmp
+*.log

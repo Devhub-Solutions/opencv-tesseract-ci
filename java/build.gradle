@@ -1,0 +1,70 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+}
+
+group = 'com.nativeloader'
+version = '1.0.0'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // JNA for Tesseract bindings
+    api 'net.java.dev.jna:jna:5.14.0'
+
+    // OpenCV JAR (placed in libs/ from CI artifacts)
+    implementation files('libs/opencv-4100.jar')
+
+    // Testing
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+// Copy native libs into JAR resources
+task copyNativeLibs(type: Copy) {
+    from('native-lib') {
+        include '**/*.so'
+        include '**/*.dll'
+        include '**/*.dylib'
+    }
+    into "${buildDir}/resources/main/native-lib"
+}
+
+jar {
+    dependsOn copyNativeLibs
+    archiveBaseName = 'opencv-tesseract-native'
+
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+
+    manifest {
+        attributes 'Main-Class': 'com.nativeloader.NativeLibraryLoader'
+    }
+}
+
+// Create fat JAR
+task fatJar(type: Jar) {
+    archiveBaseName = 'opencv-tesseract-native-all'
+    archiveClassifier = 'all'
+
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+
+    with jar
+
+    manifest {
+        attributes 'Main-Class': 'com.nativeloader.NativeLibraryLoader'
+    }
+}

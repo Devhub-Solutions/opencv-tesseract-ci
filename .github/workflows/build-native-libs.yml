@@ -1,0 +1,359 @@
+name: Build OpenCV & Tesseract Native Libraries
+
+on:
+  push:
+    branches: [main, develop]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      opencv_version:
+        description: 'OpenCV version to build'
+        required: false
+        default: '4.10.0'
+      tesseract_version:
+        description: 'Tesseract OCR version to build'
+        required: false
+        default: '5.5.0'
+      leptonica_version:
+        description: 'Leptonica version to build'
+        required: false
+        default: '1.85.0'
+
+env:
+  OPENCV_VERSION: ${{ github.event.inputs.opencv_version || '4.10.0' }}
+  TESSERACT_VERSION: ${{ github.event.inputs.tesseract_version || '5.5.0' }}
+  LEPTONICA_VERSION: ${{ github.event.inputs.leptonica_version || '1.85.0' }}
+  ARTIFACT_RETENTION_DAYS: 90
+
+permissions:
+  contents: write
+
+jobs:
+  # ============================================================
+  # Build on Linux (Ubuntu) - produces .so files + .jar
+  # ============================================================
+  build-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache OpenCV source
+        uses: actions/cache@v4
+        with:
+          path: ~/opencv-source
+          key: opencv-${{ env.OPENCV_VERSION }}-linux
+
+      - name: Cache Tesseract source
+        uses: actions/cache@v4
+        with:
+          path: ~/tesseract-source
+          key: tesseract-${{ env.TESSERACT_VERSION }}-linux
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake git pkg-config \
+            libgtk-3-dev libavcodec-dev libavformat-dev libswscale-dev \
+            libtbb2 libtbb-dev libjpeg-dev libpng-dev libtiff-dev \
+            libdc1394-dev libeigen3-dev libtheora-dev libvorbis-dev \
+            libxvidcore-dev libx264-dev sphinx-common libtesseract-dev \
+            yasm libfaac-dev libopencore-amrnb-dev libopencore-amrwb-dev \
+            libopenexr-dev libgstreamer-plugins-base1.0-dev \
+            libgstreamer1.0-dev libwebp-dev libhdf5-dev \
+            autoconf automake libtool gettext asciidoc \
+            libleptonica-dev zlib1g-dev \
+            ant default-jdk
+
+      - name: Build Leptonica from source
+        run: bash scripts/build-leptonica-linux.sh
+        env:
+          LEPTONICA_VERSION: ${{ env.LEPTONICA_VERSION }}
+
+      - name: Build Tesseract from source
+        run: bash scripts/build-tesseract-linux.sh
+        env:
+          TESSERACT_VERSION: ${{ env.TESSERACT_VERSION }}
+
+      - name: Build OpenCV with Java support
+        run: bash scripts/build-opencv-linux.sh
+        env:
+          OPENCV_VERSION: ${{ env.OPENCV_VERSION }}
+
+      - name: Prepare Java artifacts
+        run: bash scripts/package-linux.sh
+
+      - name: Upload OpenCV JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencv-java-linux
+          path: artifacts/linux/opencv/
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+
+      - name: Upload Tesseract native libs
+        uses: actions/upload-artifact@v4
+        with:
+          name: tesseract-native-linux
+          path: artifacts/linux/tesseract/
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+
+  # ============================================================
+  # Build on Windows - produces .dll files + .jar
+  # ============================================================
+  build-windows:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            git
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-pkg-config
+            mingw-w64-x86_64-nasm
+            mingw-w64-x86_64-libpng
+            mingw-w64-x86_64-libjpeg-turbo
+            mingw-w64-x86_64-libtiff
+            mingw-w64-x86_64-libwebp
+            mingw-w64-x86_64-openjpeg2
+            mingw-w64-x86_64-eigen3
+            mingw-w64-x86_64-tbb
+            mingw-w64-x86_64-ffmpeg
+            mingw-w64-x86_64-gettext-tools
+            mingw-w64-x86_64-asciidoc
+            autoconf automake libtool
+            make
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Apache Ant
+        run: choco install ant -y
+
+      - name: Cache OpenCV source
+        uses: actions/cache@v4
+        with:
+          path: ~/opencv-source
+          key: opencv-${{ env.OPENCV_VERSION }}-windows
+
+      - name: Cache Tesseract source
+        uses: actions/cache@v4
+        with:
+          path: ~/tesseract-source
+          key: tesseract-${{ env.TESSERACT_VERSION }}-windows
+
+      - name: Build Leptonica (MSYS2)
+        shell: msys2 {0}
+        run: bash scripts/build-leptonica-windows.sh
+        env:
+          LEPTONICA_VERSION: ${{ env.LEPTONICA_VERSION }}
+
+      - name: Build Tesseract (MSYS2)
+        shell: msys2 {0}
+        run: bash scripts/build-tesseract-windows.sh
+        env:
+          TESSERACT_VERSION: ${{ env.TESSERACT_VERSION }}
+
+      - name: Build OpenCV with Java support
+        shell: msys2 {0}
+        run: bash scripts/build-opencv-windows.sh
+        env:
+          OPENCV_VERSION: ${{ env.OPENCV_VERSION }}
+
+      - name: Prepare Java artifacts
+        shell: msys2 {0}
+        run: bash scripts/package-windows.sh
+
+      - name: Upload OpenCV JAR + DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencv-java-windows
+          path: artifacts/windows/opencv/
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+
+      - name: Upload Tesseract native libs
+        uses: actions/upload-artifact@v4
+        with:
+          name: tesseract-native-windows
+          path: artifacts/windows/tesseract/
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+
+  # ============================================================
+  # Build on macOS - produces .dylib files + .jar
+  # ============================================================
+  build-macos:
+    runs-on: macos-13
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache OpenCV source
+        uses: actions/cache@v4
+        with:
+          path: ~/opencv-source
+          key: opencv-${{ env.OPENCV_VERSION }}-macos
+
+      - name: Cache Tesseract source
+        uses: actions/cache@v4
+        with:
+          path: ~/tesseract-source
+          key: tesseract-${{ env.TESSERACT_VERSION }}-macos
+
+      - name: Install Homebrew dependencies
+        run: |
+          brew update
+          brew install cmake ant pkg-config eigen nasm \
+            jpeg libpng libtiff openjpeg openexr \
+            ffmpeg tbb gettext asciidoc \
+            autoconf automake libtool
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Build Leptonica from source
+        run: bash scripts/build-leptonica-macos.sh
+        env:
+          LEPTONICA_VERSION: ${{ env.LEPTONICA_VERSION }}
+
+      - name: Build Tesseract from source
+        run: bash scripts/build-tesseract-macos.sh
+        env:
+          TESSERACT_VERSION: ${{ env.TESSERACT_VERSION }}
+
+      - name: Build OpenCV with Java support
+        run: bash scripts/build-opencv-macos.sh
+        env:
+          OPENCV_VERSION: ${{ env.OPENCV_VERSION }}
+
+      - name: Prepare Java artifacts
+        run: bash scripts/package-macos.sh
+
+      - name: Upload OpenCV JAR + dylib
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencv-java-macos
+          path: artifacts/macos/opencv/
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+
+      - name: Upload Tesseract native libs
+        uses: actions/upload-artifact@v4
+        with:
+          name: tesseract-native-macos
+          path: artifacts/macos/tesseract/
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+
+  # ============================================================
+  # Package all artifacts into a single Java-importable release
+  # ============================================================
+  package-release:
+    needs: [build-linux, build-windows, build-macos]
+    runs-on: ubuntu-22.04
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-artifacts/
+
+      - name: Display structure of downloaded files
+        run: ls -R all-artifacts/
+
+      - name: Create unified native-lib structure
+        run: |
+          mkdir -p release/native-lib
+          
+          # Linux
+          mkdir -p release/native-lib/linux/x86_64
+          cp all-artifacts/opencv-java-linux/*.so release/native-lib/linux/x86_64/ 2>/dev/null || true
+          cp all-artifacts/tesseract-native-linux/*.so release/native-lib/linux/x86_64/ 2>/dev/null || true
+          
+          # Windows
+          mkdir -p release/native-lib/windows/x86_64
+          cp all-artifacts/opencv-java-windows/*.dll release/native-lib/windows/x86_64/ 2>/dev/null || true
+          cp all-artifacts/tesseract-native-windows/*.dll release/native-lib/windows/x86_64/ 2>/dev/null || true
+          
+          # macOS
+          mkdir -p release/native-lib/macos/x86_64
+          cp all-artifacts/opencv-java-macos/*.dylib release/native-lib/macos/x86_64/ 2>/dev/null || true
+          cp all-artifacts/tesseract-native-macos/*.dylib release/native-lib/macos/x86_64/ 2>/dev/null || true
+          
+          # macOS ARM64 (if available from macos-14 runner)
+          mkdir -p release/native-lib/macos/arm64
+          cp all-artifacts/opencv-java-macos-arm64/*.dylib release/native-lib/macos/arm64/ 2>/dev/null || true
+          cp all-artifacts/tesseract-native-macos-arm64/*.dylib release/native-lib/macos/arm64/ 2>/dev/null || true
+          
+          # JAR files
+          mkdir -p release/jars
+          cp all-artifacts/opencv-java-linux/*.jar release/jars/ 2>/dev/null || true
+          
+          # Header files
+          mkdir -p release/headers
+          cp all-artifacts/opencv-java-linux/include/*.h release/headers/ 2>/dev/null || true
+          cp all-artifacts/tesseract-native-linux/include/*.h release/headers/ 2>/dev/null || true
+
+      - name: Create version info file
+        run: |
+          cat > release/VERSION_INFO.txt << EOF
+          OpenCV Version: ${{ env.OPENCV_VERSION }}
+          Tesseract Version: ${{ env.TESSERACT_VERSION }}
+          Leptonica Version: ${{ env.LEPTONICA_VERSION }}
+          Build Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          Build Runner: GitHub Actions
+          EOF
+
+      - name: Create native-lib ZIP
+        run: |
+          cd release
+          zip -r ../native-libs.zip native-lib/ jars/ headers/ VERSION_INFO.txt
+
+      - name: Upload unified artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-libs-all-platforms
+          path: native-libs.zip
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Native Libraries ${{ github.ref_name }}
+          body: |
+            ## Pre-built Native Libraries for Java
+            - **OpenCV**: ${{ env.OPENCV_VERSION }}
+            - **Tesseract OCR**: ${{ env.TESSERACT_VERSION }}
+            - **Leptonica**: ${{ env.LEPTONICA_VERSION }}
+            
+            ### Supported Platforms
+            | Platform | Architecture | Files |
+            |----------|-------------|-------|
+            | Linux | x86_64 | `.so` |
+            | Windows | x86_64 | `.dll` |
+            | macOS | x86_64 | `.dylib` |
+            
+            ### Usage
+            Download `native-libs.zip`, extract, and follow the integration guide in README.md
+          draft: false
+          prerelease: false
+          files: |
+            native-libs.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

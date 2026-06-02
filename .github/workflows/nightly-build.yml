@@ -1,0 +1,207 @@
+name: Nightly Build & macOS ARM64
+
+on:
+  schedule:
+    # Chạy mỗi ngày lúc 00:00 UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+env:
+  OPENCV_VERSION: '4.10.0'
+  TESSERACT_VERSION: '5.5.0'
+  LEPTONICA_VERSION: '1.85.0'
+
+permissions:
+  contents: write
+
+jobs:
+  # ============================================================
+  # Build macOS ARM64 (Apple Silicon M1/M2/M3)
+  # ============================================================
+  build-macos-arm64:
+    runs-on: macos-14  # Apple Silicon runner
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache OpenCV source
+        uses: actions/cache@v4
+        with:
+          path: ~/opencv-source
+          key: opencv-${{ env.OPENCV_VERSION }}-macos-arm64
+
+      - name: Cache Tesseract source
+        uses: actions/cache@v4
+        with:
+          path: ~/tesseract-source
+          key: tesseract-${{ env.TESSERACT_VERSION }}-macos-arm64
+
+      - name: Install Homebrew dependencies
+        run: |
+          brew update
+          brew install cmake ant pkg-config eigen nasm \
+            jpeg libpng libtiff openjpeg openexr \
+            ffmpeg tbb gettext asciidoc \
+            autoconf automake libtool
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Build Leptonica (ARM64)
+        run: |
+          LEPTONICA_VERSION="${{ env.LEPTONICA_VERSION }}"
+          SOURCE_DIR="$HOME/leptonica-source"
+          BUILD_DIR="$HOME/leptonica-build"
+
+          if [ ! -d "${SOURCE_DIR}/leptonica-${LEPTONICA_VERSION}" ]; then
+            mkdir -p "${SOURCE_DIR}" && cd "${SOURCE_DIR}"
+            curl -L "https://github.com/DanBloomberg/leptonica/releases/download/${LEPTONICA_VERSION}/leptonica-${LEPTONICA_VERSION}.tar.gz" -o leptonica.tar.gz
+            tar -xzf leptonica.tar.gz && rm leptonica.tar.gz
+          fi
+
+          mkdir -p "${BUILD_DIR}" && cd "${BUILD_DIR}"
+          cmake "${SOURCE_DIR}/leptonica-${LEPTONICA_VERSION}" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr/local \
+            -DBUILD_SHARED_LIBS=ON \
+            -DBUILD_PROG=OFF \
+            -DCMAKE_OSX_ARCHITECTURES="arm64"
+
+          cmake --build . -j$(sysctl -n hw.ncpu)
+          cmake --install .
+
+      - name: Build Tesseract (ARM64)
+        run: |
+          TESSERACT_VERSION="${{ env.TESSERACT_VERSION }}"
+          SOURCE_DIR="$HOME/tesseract-source"
+          BUILD_DIR="$HOME/tesseract-build"
+          ARTIFACT_DIR="${GITHUB_WORKSPACE}/artifacts/macos-arm64/tesseract"
+
+          if [ ! -d "${SOURCE_DIR}/tesseract-${TESSERACT_VERSION}" ]; then
+            mkdir -p "${SOURCE_DIR}" && cd "${SOURCE_DIR}"
+            curl -L "https://github.com/tesseract-ocr/tesseract/archive/${TESSERACT_VERSION}.tar.gz" -o tesseract.tar.gz
+            tar -xzf tesseract.tar.gz && rm tesseract.tar.gz
+          fi
+
+          mkdir -p "${BUILD_DIR}" && cd "${BUILD_DIR}"
+          cmake "${SOURCE_DIR}/tesseract-${TESSERACT_VERSION}" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr/local \
+            -DBUILD_SHARED_LIBS=ON \
+            -DBUILD_TRAINING_TOOLS=OFF \
+            -DCMAKE_OSX_ARCHITECTURES="arm64" \
+            -DLeptonica_DIR="/usr/local/lib/cmake/leptonica"
+
+          cmake --build . -j$(sysctl -n hw.ncpu)
+          cmake --install .
+
+          mkdir -p "${ARTIFACT_DIR}"
+          cp /usr/local/lib/libtesseract*.dylib "${ARTIFACT_DIR}/"
+          cp /usr/local/lib/liblept*.dylib "${ARTIFACT_DIR}/"
+          cp -r /usr/local/include/tesseract "${ARTIFACT_DIR}/"
+
+      - name: Build OpenCV with Java (ARM64)
+        run: |
+          OPENCV_VERSION="${{ env.OPENCV_VERSION }}"
+          SOURCE_DIR="$HOME/opencv-source"
+          BUILD_DIR="$HOME/opencv-build-arm64"
+          ARTIFACT_DIR="${GITHUB_WORKSPACE}/artifacts/macos-arm64/opencv"
+
+          if [ ! -d "${SOURCE_DIR}/opencv-${OPENCV_VERSION}" ]; then
+            mkdir -p "${SOURCE_DIR}" && cd "${SOURCE_DIR}"
+            curl -L "https://github.com/opencv/opencv/archive/${OPENCV_VERSION}.tar.gz" -o opencv.tar.gz
+            tar -xzf opencv.tar.gz && rm opencv.tar.gz
+            curl -L "https://github.com/opencv/opencv_contrib/archive/${OPENCV_VERSION}.tar.gz" -o opencv_contrib.tar.gz
+            tar -xzf opencv_contrib.tar.gz && rm opencv_contrib.tar.gz
+          fi
+
+          mkdir -p "${BUILD_DIR}" && cd "${BUILD_DIR}"
+          cmake "${SOURCE_DIR}/opencv-${OPENCV_VERSION}" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr/local \
+            -DCMAKE_OSX_ARCHITECTURES="arm64" \
+            -DBUILD_opencv_java=ON \
+            -DBUILD_FAT_JAVA_LIBS=ON \
+            -DJAVA_HOME="${JAVA_HOME}" \
+            -DJAVA_INCLUDE_PATH="${JAVA_HOME}/include" \
+            -DJAVA_INCLUDE_PATH2="${JAVA_HOME}/include/darwin" \
+            -DJAVA_JVM_LIBRARY="${JAVA_HOME}/lib/server/libjvm.dylib" \
+            -DOPENCV_EXTRA_MODULES_PATH="${SOURCE_DIR}/opencv_contrib-${OPENCV_VERSION}/modules" \
+            -DBUILD_opencv_python3=OFF \
+            -DBUILD_opencv_python2=OFF \
+            -DBUILD_TESTS=OFF \
+            -DBUILD_PERF_TESTS=OFF \
+            -DBUILD_EXAMPLES=OFF \
+            -DBUILD_DOCS=OFF \
+            -DBUILD_opencv_apps=OFF \
+            -DBUILD_opencv_highgui=OFF \
+            -DBUILD_opencv_text=ON \
+            -DWITH_TESSERACT=ON \
+            -DTESSERACT_INCLUDE_DIR="/usr/local/include" \
+            -DTESSERACT_LIBRARY="/usr/local/lib/libtesseract.dylib" \
+            -DWITH_FFMPEG=ON \
+            -DWITH_GTK=OFF \
+            -DWITH_EIGEN=ON \
+            -DWITH_TBB=ON
+
+          cmake --build . -j$(sysctl -n hw.ncpu)
+          cmake --install .
+
+          mkdir -p "${ARTIFACT_DIR}"
+          JAR_FILE=$(find "${BUILD_DIR}" -name "opencv-*.jar" -type f | head -1)
+          [ -n "${JAR_FILE}" ] && cp "${JAR_FILE}" "${ARTIFACT_DIR}/"
+          JNI_DYLIB=$(find "${BUILD_DIR}" -name "libopencv_java*.dylib" -type f | head -1)
+          [ -n "${JNI_DYLIB}" ] && cp "${JNI_DYLIB}" "${ARTIFACT_DIR}/"
+
+      - name: Upload macOS ARM64 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencv-java-macos-arm64
+          path: artifacts/macos-arm64/opencv/
+          retention-days: 30
+
+      - name: Upload Tesseract macOS ARM64
+        uses: actions/upload-artifact@v4
+        with:
+          name: tesseract-native-macos-arm64
+          path: artifacts/macos-arm64/tesseract/
+          retention-days: 30
+
+  # ============================================================
+  # Nightly release
+  # ============================================================
+  nightly-release:
+    needs: [build-macos-arm64]
+    runs-on: ubuntu-22.04
+    if: github.event_name == 'schedule'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download ARM64 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: nightly-artifacts/
+
+      - name: Create nightly ZIP
+        run: |
+          mkdir -p nightly/native-lib/macos/arm64
+          cp nightly-artifacts/opencv-java-macos-arm64/*.dylib nightly/native-lib/macos/arm64/ 2>/dev/null || true
+          cp nightly-artifacts/tesseract-native-macos-arm64/*.dylib nightly/native-lib/macos/arm64/ 2>/dev/null || true
+          cd nightly && zip -r ../nightly-macos-arm64.zip native-lib/
+
+      - name: Update nightly release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: Nightly Build
+          body: |
+            Automated nightly build for macOS ARM64 (Apple Silicon).
+            Built on $(date -u +"%Y-%m-%d %H:%M UTC").
+          prerelease: true
+          files: nightly-macos-arm64.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
