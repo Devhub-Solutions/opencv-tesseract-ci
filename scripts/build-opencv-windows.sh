@@ -1,6 +1,9 @@
 #!/bin/bash
 # ============================================================
 # Build OpenCV with Java support on Windows (MSYS2/MinGW64)
+# FIX: Disable WITH_FFMPEG, WITH_DC1394, WITH_OPENEXR for portability
+# FIX: Disable WITH_TBB to avoid missing libtbb dependency
+# FIX: Set RPATH equivalent for Windows DLL resolution
 # ============================================================
 set -euo pipefail
 
@@ -55,8 +58,11 @@ cd "${BUILD_DIR}"
 export PKG_CONFIG_PATH="${INSTALL_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
 export CMAKE_PREFIX_PATH="${INSTALL_PREFIX}:${CMAKE_PREFIX_PATH:-}"
 
-# Configure with Java support
-# FIX: Added BUILD_SHARED_LIBS=OFF for fat JNI library
+# FIX: Same changes as Linux build:
+# - WITH_FFMPEG=OFF (avoids massive transitive deps)
+# - WITH_TBB=OFF (avoids missing libtbb.dll)
+# - WITH_OPENEXR=OFF (avoids missing OpenEXR DLL)
+# - WITH_DC1394=OFF (FireWire, not available on Windows)
 cmake "${SOURCE_DIR}/opencv-${OPENCV_VERSION}" \
     "${CMAKE_GENERATOR_ARGS[@]}" \
     -DCMAKE_BUILD_TYPE=Release \
@@ -86,7 +92,7 @@ cmake "${SOURCE_DIR}/opencv-${OPENCV_VERSION}" \
     -DBUILD_opencv_core=ON \
     -DBUILD_opencv_imgproc=ON \
     -DBUILD_opencv_imgcodecs=ON \
-    -DBUILD_opencv_videoio=ON \
+    -DBUILD_opencv_videoio=OFF \
     -DBUILD_opencv_highgui=OFF \
     -DBUILD_opencv_objdetect=ON \
     -DBUILD_opencv_dnn=ON \
@@ -105,8 +111,10 @@ cmake "${SOURCE_DIR}/opencv-${OPENCV_VERSION}" \
     -DWITH_FFMPEG=OFF \
     -DWITH_GTK=OFF \
     -DWITH_V4L=OFF \
+    -DWITH_DC1394=OFF \
+    -DWITH_OPENEXR=OFF \
     -DWITH_EIGEN=ON \
-    -DWITH_TBB=ON \
+    -DWITH_TBB=OFF \
     -DWITH_OPENCL=ON \
     -DWITH_JPEG=ON \
     -DWITH_PNG=ON \
@@ -148,6 +156,28 @@ if [ -n "${JNI_DLL}" ]; then
 else
     echo "WARNING: OpenCV JNI DLL not found, searching alternatives..."
     find "${BUILD_DIR}" -name "*.dll" | head -20
+fi
+
+# FIX: Copy all DLL dependencies of the OpenCV JNI DLL
+# On Windows, DLLs are searched in the same directory first, so bundling
+# them together is sufficient (no RPATH needed like Linux)
+echo "--- Collecting DLL dependencies for OpenCV JNI ---"
+if [ -n "${JNI_DLL}" ]; then
+    # Use objdump or ldd to find dependencies, then copy them
+    DEPS_DIR="${ARTIFACT_DIR}/deps"
+    mkdir -p "${DEPS_DIR}"
+
+    # Common DLLs that may be needed from MSYS2/MinGW
+    for dll in libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll \
+               libpng16.dll libjpeg*.dll libtiff.dll libwebp.dll zlib1.dll \
+               liblzma-5.dll libopenjp2.dll libgif.dll; do
+        for f in "${INSTALL_PREFIX}/bin/"${dll}; do
+            if [ -f "$f" ]; then
+                cp "$f" "${DEPS_DIR}/"
+                echo "  Bundled: $(basename $f)"
+            fi
+        done
+    done
 fi
 
 # Copy header files

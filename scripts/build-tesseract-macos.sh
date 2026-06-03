@@ -1,6 +1,8 @@
 #!/bin/bash
 # ============================================================
 # Build Tesseract OCR on macOS
+# FIX: Disable libarchive/libcurl to reduce transitive deps
+# FIX: Use install_name_tool to set proper library IDs for portability
 # ============================================================
 set -euo pipefail
 
@@ -26,6 +28,8 @@ fi
 # Build
 mkdir -p "${BUILD_DIR}"
 cd "${BUILD_DIR}"
+
+# FIX: Disable libarchive/libcurl (same as Linux)
 cmake "${SOURCE_DIR}/tesseract-${TESSERACT_VERSION}" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="${INSTALL_PREFIX}" \
@@ -33,7 +37,9 @@ cmake "${SOURCE_DIR}/tesseract-${TESSERACT_VERSION}" \
     -DBUILD_TRAINING_TOOLS=OFF \
     -DENABLE_LTO=ON \
     -DCMAKE_OSX_ARCHITECTURES="x86_64" \
-    -DLeptonica_DIR="${INSTALL_PREFIX}/lib/cmake/leptonica"
+    -DLeptonica_DIR="${INSTALL_PREFIX}/lib/cmake/leptonica" \
+    -DCMAKE_DISABLE_FIND_PACKAGE_libarchive=ON \
+    -DCMAKE_DISABLE_FIND_PACKAGE_CURL=ON
 
 cmake --build . -j$(sysctl -n hw.ncpu)
 cmake --install .

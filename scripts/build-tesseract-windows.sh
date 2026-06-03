@@ -1,6 +1,8 @@
 #!/bin/bash
 # ============================================================
 # Build Tesseract OCR on Windows (MSYS2/MinGW64)
+# FIX: Disable libarchive/libcurl to reduce transitive deps
+# FIX: Copy ALL runtime DLL dependencies including image format libs
 # ============================================================
 set -euo pipefail
 
@@ -33,6 +35,7 @@ if [ ! -d "${SOURCE_DIR}/tesseract-${TESSERACT_VERSION}" ]; then
 fi
 
 # Build shared libraries
+# FIX: Added -DCMAKE_DISABLE_FIND_PACKAGE_libarchive=ON and -DCMAKE_DISABLE_FIND_PACKAGE_CURL=ON
 mkdir -p "${BUILD_DIR}"
 cd "${BUILD_DIR}"
 cmake "${SOURCE_DIR}/tesseract-${TESSERACT_VERSION}" \
@@ -44,7 +47,9 @@ cmake "${SOURCE_DIR}/tesseract-${TESSERACT_VERSION}" \
     -DBUILD_SHARED_LIBS=ON \
     -DBUILD_TRAINING_TOOLS=OFF \
     -DENABLE_LTO=ON \
-    -DLeptonica_DIR="${INSTALL_PREFIX}/lib/cmake/leptonica"
+    -DLeptonica_DIR="${INSTALL_PREFIX}/lib/cmake/leptonica" \
+    -DCMAKE_DISABLE_FIND_PACKAGE_libarchive=ON \
+    -DCMAKE_DISABLE_FIND_PACKAGE_CURL=ON
 
 cmake --build . -j$(nproc)
 cmake --install .
@@ -63,14 +68,20 @@ cp "${INSTALL_PREFIX}/lib/liblept.dll.a" "${ARTIFACT_DIR}/lib/" 2>/dev/null || t
 # Copy headers
 cp -r "${INSTALL_PREFIX}/include/tesseract" "${ARTIFACT_DIR}/include/" 2>/dev/null || true
 
-# Also copy runtime DLL dependencies
+# Runtime DLL dependencies (MinGW runtime)
 for dll in libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
     cp "${INSTALL_PREFIX}/bin/${dll}" "${ARTIFACT_DIR}/bin/" 2>/dev/null || true
 done
 
-# Image format DLLs
-for dll in libpng16.dll libjpeg62.dll libtiff.dll libwebp.dll zlib1.dll liblzma-5.dll; do
-    cp "${INSTALL_PREFIX}/bin/${dll}" "${ARTIFACT_DIR}/bin/" 2>/dev/null || true
+# FIX: Copy ALL image format DLLs - use wildcard patterns for robustness
+# The previous version used hardcoded names like "libjpeg62.dll" which may
+# not match the actual MSYS2 package version (libjpeg-8.dll, libjpeg-62.dll, etc.)
+for dll_pattern in "libpng*.dll" "libjpeg*.dll" "libtiff*.dll" "libwebp*.dll" "zlib1.dll" "liblzma*.dll"; do
+    for f in "${INSTALL_PREFIX}/bin/"${dll_pattern}; do
+        if [ -f "$f" ]; then
+            cp "$f" "${ARTIFACT_DIR}/bin/"
+        fi
+    done
 done
 
 echo "Tesseract artifacts collected in ${ARTIFACT_DIR}"

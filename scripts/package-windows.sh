@@ -1,6 +1,7 @@
 #!/bin/bash
 # ============================================================
 # Package Windows artifacts into Java-importable structure
+# FIX: Copy ALL DLLs from deps/ directory for a self-contained bundle
 # ============================================================
 set -euo pipefail
 
@@ -22,13 +23,17 @@ if [ -d "${ARTIFACT_DIR}/opencv" ]; then
     cp "${ARTIFACT_DIR}/opencv/"*.jar "${ARTIFACT_DIR}/opencv-upload/" 2>/dev/null || true
     cp "${ARTIFACT_DIR}/opencv/"*.dll "${ARTIFACT_DIR}/opencv-upload/" 2>/dev/null || true
     cp "${ARTIFACT_DIR}/opencv/include/"*.h "${ARTIFACT_DIR}/opencv-upload/" 2>/dev/null || true
+    # FIX: Copy DLL dependencies from deps/
+    if [ -d "${ARTIFACT_DIR}/opencv/deps" ]; then
+        cp "${ARTIFACT_DIR}/opencv/deps/"*.dll "${ARTIFACT_DIR}/opencv-upload/" 2>/dev/null || true
+    fi
 fi
 
 # Copy Tesseract artifacts
 echo "--- Tesseract ---"
 if [ -d "${ARTIFACT_DIR}/tesseract" ]; then
     ls -laR "${ARTIFACT_DIR}/tesseract/"
-    # FIX: Copy ALL DLLs including Leptonica and runtime dependencies
+    # Copy ALL DLLs including Leptonica and runtime dependencies
     cp "${ARTIFACT_DIR}/tesseract/bin/"*.dll "${ARTIFACT_DIR}/tesseract-upload/" 2>/dev/null || true
     cp "${ARTIFACT_DIR}/tesseract/lib/"*.dll.a "${ARTIFACT_DIR}/tesseract-upload/" 2>/dev/null || true
     cp -r "${ARTIFACT_DIR}/tesseract/include/tesseract" "${ARTIFACT_DIR}/tesseract-upload/" 2>/dev/null || true

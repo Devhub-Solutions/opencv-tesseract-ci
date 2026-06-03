@@ -1,6 +1,11 @@
 #!/bin/bash
 # ============================================================
 # Build OpenCV with Java support on Linux (Ubuntu)
+# FIX: Disable WITH_FFMPEG to avoid 50+ transitive deps (libdc1394, libvpx, etc.)
+# FIX: Disable WITH_DC1394 to avoid FireWire camera dependency
+# FIX: Disable WITH_OPENEXR to avoid libIlmImf dependency
+# FIX: Set RPATH=$ORIGIN so bundled .so files can find each other
+# FIX: Collect ALL transitive dependencies that OpenCV JNI library needs
 # ============================================================
 set -euo pipefail
 
@@ -17,12 +22,12 @@ echo "========================================"
 if [ ! -d "${SOURCE_DIR}/opencv-${OPENCV_VERSION}" ]; then
     mkdir -p "${SOURCE_DIR}"
     cd "${SOURCE_DIR}"
-    
+
     # Download OpenCV
     curl -L "https://github.com/opencv/opencv/archive/${OPENCV_VERSION}.tar.gz" -o opencv.tar.gz
     tar -xzf opencv.tar.gz
     rm opencv.tar.gz
-    
+
     # Download OpenCV Contrib
     curl -L "https://github.com/opencv/opencv_contrib/archive/${OPENCV_VERSION}.tar.gz" -o opencv_contrib.tar.gz
     tar -xzf opencv_contrib.tar.gz
@@ -39,10 +44,26 @@ export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
 export CMAKE_PREFIX_PATH="/usr/local:${CMAKE_PREFIX_PATH:-}"
 
 # Configure with Java support
-# FIX: Added BUILD_SHARED_LIBS=OFF so OpenCV modules are built as static
-# archives and linked into the fat JNI library. Without this flag,
-# BUILD_FAT_JAVA_LIBS=ON still produces a thin wrapper that dynamically
-# depends on individual libopencv_*.so module files.
+# FIX: BUILD_SHARED_LIBS=OFF so OpenCV modules are built as static
+# archives and linked into the fat JNI library.
+#
+# FIX: WITH_FFMPEG=OFF - FFMPEG pulls in libavcodec, libavformat, etc.
+# which themselves depend on libdc1394, libvpx, libx264, libx265, libIlmImf,
+# libtbb, etc. This creates a massive transitive dependency chain.
+# If video codec support is needed, use a separate pipeline that bundles ALL deps.
+#
+# FIX: WITH_DC1394=OFF - FireWire camera support, not needed for OCR,
+# and libdc1394 is not available on most user systems.
+#
+# FIX: WITH_OPENEXR=OFF - OpenEXR pulls in libIlmImf which is rarely
+# available on user systems and not needed for OCR.
+#
+# FIX: WITH_TBB=OFF for building, but link TBB statically if needed.
+# TBB's libtbb.so.12 is not available on all systems. Disabling to avoid
+# the dependency. Performance impact is minimal for OCR workloads.
+#
+# FIX: CMAKE_INSTALL_RPATH=$ORIGIN so the JNI library can find bundled
+# dependencies (libtesseract, libleptonica) in the same directory.
 cmake "${SOURCE_DIR}/opencv-${OPENCV_VERSION}" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="/usr/local" \
@@ -67,7 +88,7 @@ cmake "${SOURCE_DIR}/opencv-${OPENCV_VERSION}" \
     -DBUILD_opencv_core=ON \
     -DBUILD_opencv_imgproc=ON \
     -DBUILD_opencv_imgcodecs=ON \
-    -DBUILD_opencv_videoio=ON \
+    -DBUILD_opencv_videoio=OFF \
     -DBUILD_opencv_highgui=OFF \
     -DBUILD_opencv_objdetect=ON \
     -DBUILD_opencv_dnn=ON \
@@ -83,18 +104,23 @@ cmake "${SOURCE_DIR}/opencv-${OPENCV_VERSION}" \
     -DLept_LIBRARY="/usr/local/lib/libleptonica.so" \
     -DTesseract_LIBRARIES="/usr/local/lib/libtesseract.so;/usr/local/lib/libleptonica.so" \
     \
-    -DWITH_FFMPEG=ON \
+    -DWITH_FFMPEG=OFF \
     -DWITH_GSTREAMER=OFF \
     -DWITH_GTK=OFF \
     -DWITH_V4L=OFF \
+    -DWITH_DC1394=OFF \
+    -DWITH_OPENEXR=OFF \
     -DWITH_EIGEN=ON \
-    -DWITH_TBB=ON \
+    -DWITH_TBB=OFF \
     -DWITH_OPENCL=ON \
     -DWITH_JPEG=ON \
     -DWITH_PNG=ON \
     -DWITH_TIFF=ON \
     -DWITH_WEBP=ON \
-    -DWITH_OPENJPEG=ON
+    -DWITH_OPENJPEG=ON \
+    \
+    -DCMAKE_INSTALL_RPATH="\$ORIGIN" \
+    -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON
 
 # Build
 cmake --build . -j$(nproc)
@@ -105,18 +131,61 @@ ls -la "${BUILD_DIR}/bin/"*.jar 2>/dev/null || echo "JAR not found in bin/"
 ls -la "${BUILD_DIR}/lib/"*java* 2>/dev/null || echo "Java lib not found in lib/"
 find "${BUILD_DIR}" -name "*.jar" -o -name "*java*" 2>/dev/null || true
 
-echo "--- Verifying fat JNI library has no OpenCV module dependencies ---"
+echo "--- Verifying fat JNI library has minimal external dependencies ---"
 JNI_LIB=$(find "${BUILD_DIR}/lib" -name "libopencv_java*.so" -type f | head -1)
 if [ -n "${JNI_LIB}" ]; then
     echo "JNI library: ${JNI_LIB}"
     echo "File size: $(du -h "${JNI_LIB}" | cut -f1)"
-    echo "Dynamic dependencies (should NOT include libopencv_*.so modules):"
+    echo "Dynamic dependencies:"
     ldd "${JNI_LIB}" 2>/dev/null || true
+
+    # Check for problematic dependencies
+    echo ""
+    echo "--- Checking for unbundled dependencies ---"
+    MISSING_COUNT=0
+    while IFS= read -r line; do
+        dep_name=$(echo "$line" | awk '{print $1}')
+        dep_status=$(echo "$line" | grep -o "not found" || true)
+        if [ -n "$dep_status" ]; then
+            echo "  MISSING: $dep_name"
+            MISSING_COUNT=$((MISSING_COUNT + 1))
+        else
+            # Check if it's a non-system library that we need to bundle
+            case "$dep_name" in
+                linux-vdso.so.*|libc.so.*|libm.so.*|libstdc++.so.*|libgcc_s.so.*|libpthread.so.*|libdl.so.*|librt.so.*|ld-linux-*.so.*)
+                    # System base libraries - always available
+                    ;;
+                libz.so.*|libpng16.so.*|libjpeg.so.*|libtiff.so.*|libwebp.so.*|libopenjp2.so.*)
+                    echo "  NEEDS BUNDLING: $dep_name (image format lib)"
+                    ;;
+                libtesseract.*|liblept.*|libleptonica.*)
+                    echo "  NEEDS BUNDLING: $dep_name (OCR lib)"
+                    ;;
+                libdc1394.*|libavcodec.*|libavformat.*|libavutil.*|libswscale.*|libswresample.*|libIlmImf.*|libtbb.*)
+                    echo "  PROBLEMATIC: $dep_name (should be disabled or statically linked)"
+                    ;;
+                libgif.*|libwebpmux.*)
+                    echo "  NEEDS BUNDLING: $dep_name (image format lib)"
+                    ;;
+            esac
+        fi
+    done < <(ldd "${JNI_LIB}" 2>/dev/null)
+
+    echo ""
+    if [ ${MISSING_COUNT} -gt 0 ]; then
+        echo "WARNING: ${MISSING_COUNT} missing dependencies detected!"
+    else
+        echo "All direct dependencies resolved."
+    fi
+
+    # Check that no individual OpenCV module .so files are needed
     if ldd "${JNI_LIB}" 2>/dev/null | grep -q "libopencv_"; then
-        echo "WARNING: Fat JNI library still depends on individual OpenCV modules!"
+        echo ""
+        echo "ERROR: Fat JNI library still depends on individual OpenCV modules!"
         ldd "${JNI_LIB}" 2>/dev/null | grep "libopencv_"
     else
-        echo "SUCCESS: Fat JNI library is self-contained (no libopencv_*.so dependencies)"
+        echo ""
+        echo "OK: Fat JNI library is self-contained (no libopencv_*.so dependencies)"
     fi
 fi
 
@@ -150,6 +219,36 @@ else
     fi
 fi
 
+# FIX: Collect ALL transitive dependencies of the OpenCV JNI library
+# This ensures that the release bundle is self-contained
+echo "--- Collecting transitive dependencies for OpenCV JNI ---"
+NATIVE_LIB_DIR="${ARTIFACT_DIR}/deps"
+mkdir -p "${NATIVE_LIB_DIR}"
+
+if [ -n "${JNI_LIB}" ]; then
+    while IFS= read -r line; do
+        dep_path=$(echo "$line" | sed -n 's/.*=> \(.*\) (.*)/\1/p')
+        if [ -n "$dep_path" ] && [ -f "$dep_path" ]; then
+            libname=$(basename "$dep_path")
+            # Only bundle non-system libraries
+            case "$libname" in
+                linux-vdso.so.*|libc.so.*|libm.so.*|libstdc++.so.*|libgcc_s.so.*|libpthread.so.*|libdl.so.*|librt.so.*|ld-linux-*.so.*)
+                    echo "  Skipping (system base): $dep_path"
+                    ;;
+                *)
+                    echo "  Bundling: $dep_path"
+                    cp "$dep_path" "${NATIVE_LIB_DIR}/" 2>/dev/null || true
+                    # Follow symlinks
+                    real_path=$(readlink -f "$dep_path")
+                    if [ -f "$real_path" ] && [ "$real_path" != "$dep_path" ]; then
+                        cp "$real_path" "${NATIVE_LIB_DIR}/" 2>/dev/null || true
+                    fi
+                    ;;
+            esac
+        fi
+    done < <(ldd "${JNI_LIB}" 2>/dev/null)
+fi
+
 # Copy JNI header files
 mkdir -p "${ARTIFACT_DIR}/include"
 HEADER_DIR="${BUILD_DIR}/modules/java/jni"
@@ -163,3 +262,5 @@ fi
 
 echo "OpenCV artifacts collected in ${ARTIFACT_DIR}"
 ls -la "${ARTIFACT_DIR}/"
+echo "Transitive deps collected:"
+ls -la "${NATIVE_LIB_DIR}/"

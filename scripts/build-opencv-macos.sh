@@ -1,6 +1,8 @@
 #!/bin/bash
 # ============================================================
 # Build OpenCV with Java support on macOS
+# FIX: Disable WITH_FFMPEG, WITH_TBB, WITH_OPENEXR for portability
+# FIX: Use install_name_tool to fix dylib paths for relocation
 # ============================================================
 set -euo pipefail
 
@@ -38,8 +40,7 @@ cd "${BUILD_DIR}"
 export PKG_CONFIG_PATH="${INSTALL_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
 export CMAKE_PREFIX_PATH="${INSTALL_PREFIX}:${CMAKE_PREFIX_PATH:-}"
 
-# Configure with Java support
-# FIX: Added BUILD_SHARED_LIBS=OFF for fat JNI library
+# FIX: Same as Linux - disable FFMPEG, TBB, OpenEXR for portability
 cmake "${SOURCE_DIR}/opencv-${OPENCV_VERSION}" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="${INSTALL_PREFIX}" \
@@ -69,7 +70,7 @@ cmake "${SOURCE_DIR}/opencv-${OPENCV_VERSION}" \
     -DBUILD_opencv_core=ON \
     -DBUILD_opencv_imgproc=ON \
     -DBUILD_opencv_imgcodecs=ON \
-    -DBUILD_opencv_videoio=ON \
+    -DBUILD_opencv_videoio=OFF \
     -DBUILD_opencv_highgui=OFF \
     -DBUILD_opencv_objdetect=ON \
     -DBUILD_opencv_dnn=ON \
@@ -88,14 +89,19 @@ cmake "${SOURCE_DIR}/opencv-${OPENCV_VERSION}" \
     -DWITH_FFMPEG=OFF \
     -DWITH_GTK=OFF \
     -DWITH_V4L=OFF \
+    -DWITH_DC1394=OFF \
+    -DWITH_OPENEXR=OFF \
     -DWITH_EIGEN=ON \
-    -DWITH_TBB=ON \
+    -DWITH_TBB=OFF \
     -DWITH_OPENCL=ON \
     -DWITH_JPEG=ON \
     -DWITH_PNG=ON \
     -DWITH_TIFF=ON \
     -DWITH_WEBP=ON \
-    -DWITH_OPENJPEG=ON
+    -DWITH_OPENJPEG=ON \
+    \
+    -DCMAKE_INSTALL_RPATH="@executable_path;@loader_path" \
+    -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON
 
 # Build
 cmake --build . -j$(sysctl -n hw.ncpu)
@@ -130,6 +136,23 @@ JNI_DYLIB=$(find "${BUILD_DIR}" -name "libopencv_java*.dylib" -type f | head -1)
 if [ -n "${JNI_DYLIB}" ]; then
     cp "${JNI_DYLIB}" "${ARTIFACT_DIR}/"
     echo "Copied JNI dylib: ${JNI_DYLIB}"
+
+    # FIX: Use install_name_tool to change absolute dylib paths to @rpath
+    # This allows the dylib to be relocated (moved to any directory)
+    echo "--- Fixing dylib install names for portability ---"
+
+    # Change the library's own ID
+    install_name_tool -id "@rpath/libopencv_java4100.dylib" "${ARTIFACT_DIR}/libopencv_java4100.dylib" 2>/dev/null || true
+
+    # Change references to Tesseract/Leptonica from absolute to @rpath
+    for dep in $(otool -L "${ARTIFACT_DIR}/libopencv_java4100.dylib" 2>/dev/null | grep -E "/usr/local/lib/lib(tesseract|leptonica)" | awk '{print $1}'); do
+        dep_name=$(basename "$dep")
+        echo "  Changing $dep → @rpath/$dep_name"
+        install_name_tool -change "$dep" "@rpath/$dep_name" "${ARTIFACT_DIR}/libopencv_java4100.dylib" 2>/dev/null || true
+    done
+
+    echo "Updated dependencies:"
+    otool -L "${ARTIFACT_DIR}/libopencv_java4100.dylib" 2>/dev/null || true
 else
     echo "WARNING: OpenCV JNI dylib not found, searching alternatives..."
     find "${BUILD_DIR}" -name "*.dylib" | head -20
