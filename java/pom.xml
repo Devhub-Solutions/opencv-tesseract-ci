@@ -1,18 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.nativeloader</groupId>
-    <artifactId>opencv-tesseract-native</artifactId>
-    <version>1.0.0</version>
+    <groupId>com.devhub.solutions.application</groupId>
+    <artifactId>opencv-tesseract-ci</artifactId>
+    <version>1.2.0</version>
     <packaging>jar</packaging>
 
-    <name>OpenCV + Tesseract Native Library Loader</name>
+    <name>OpenCV + Tesseract CI/CD Native Library Loader</name>
     <description>
         Multi-platform native library loader and Java bindings for OpenCV and Tesseract OCR.
         Supports Linux (x86_64), Windows (x86_64), and macOS (x86_64/arm64).
+        Compatible with native-libs v0.0.3+ from opencv-tesseract-ci releases.
     </description>
 
     <properties>
@@ -24,11 +25,25 @@
     </properties>
 
     <dependencies>
-        <!-- JNA for Tesseract bindings -->
+        <!-- JNA for Tesseract native bindings -->
         <dependency>
             <groupId>net.java.dev.jna</groupId>
             <artifactId>jna</artifactId>
             <version>${jna.version}</version>
+        </dependency>
+
+        <!-- OpenCV (local JAR from CI build) -->
+        <dependency>
+            <groupId>org.opencv</groupId>
+            <artifactId>opencv</artifactId>
+            <version>4.10.0</version>
+            <scope>system</scope>
+            <systemPath>${project.basedir}/libs/opencv-4100.jar</systemPath>
+        </dependency>
+        <dependency>
+            <groupId>net.sourceforge.tess4j</groupId>
+            <artifactId>tess4j</artifactId>
+            <version>5.5.0</version> <!-- Use latest stable version -->
         </dependency>
 
         <!-- Testing -->
@@ -38,11 +53,17 @@
             <version>${junit.version}</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <version>5.8.0</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
         <plugins>
-            <!-- Compile -->
+            <!-- Compiler Plugin -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -53,7 +74,7 @@
                 </configuration>
             </plugin>
 
-            <!-- Include native libs in JAR -->
+            <!-- Resources Plugin - Copy native libs into JAR classpath -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-resources-plugin</artifactId>
@@ -68,15 +89,13 @@
                         <configuration>
                             <outputDirectory>${project.build.outputDirectory}/native-lib</outputDirectory>
                             <resources>
-                                <!-- Linux x86_64 -->
                                 <resource>
                                     <directory>${project.basedir}/native-lib/linux/x86_64</directory>
                                     <targetPath>linux/x86_64</targetPath>
                                     <includes>
-                                        <include>*.so</include>
+                                        <include>*.so*</include>
                                     </includes>
                                 </resource>
-                                <!-- Windows x86_64 -->
                                 <resource>
                                     <directory>${project.basedir}/native-lib/windows/x86_64</directory>
                                     <targetPath>windows/x86_64</targetPath>
@@ -84,7 +103,6 @@
                                         <include>*.dll</include>
                                     </includes>
                                 </resource>
-                                <!-- macOS x86_64 -->
                                 <resource>
                                     <directory>${project.basedir}/native-lib/macos/x86_64</directory>
                                     <targetPath>macos/x86_64</targetPath>
@@ -92,7 +110,6 @@
                                         <include>*.dylib</include>
                                     </includes>
                                 </resource>
-                                <!-- macOS arm64 -->
                                 <resource>
                                     <directory>${project.basedir}/native-lib/macos/arm64</directory>
                                     <targetPath>macos/arm64</targetPath>
@@ -106,7 +123,30 @@
                 </executions>
             </plugin>
 
-            <!-- Fat JAR with native libs embedded -->
+            <!-- Unpack OpenCV JAR into build output so shade plugin includes it -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>unpack-opencv-jar</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <unzip src="${project.basedir}/libs/opencv-4100.jar"
+                                    dest="${project.build.outputDirectory}"
+                                    overwrite="true" />
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Shade Plugin - Fat JAR with Main-Class -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
@@ -119,8 +159,9 @@
                         </goals>
                         <configuration>
                             <transformers>
-                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <Main-Class>com.nativeloader.NativeLibraryLoader</Main-Class>
+                                <transformer
+                                    implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>com.devhub.solutions.application.ApplicationMain</mainClass>
                                 </transformer>
                             </transformers>
                             <filters>
@@ -138,17 +179,18 @@
                 </executions>
             </plugin>
 
-            <!-- Test -->
+            <!-- Surefire Plugin for Tests -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.2.5</version>
+                <configuration>
+                    <!-- Exclude integration tests that need native libraries -->
+                    <excludes>
+                        <exclude>**/IntegrationTest.java</exclude>
+                    </excludes>
+                </configuration>
             </plugin>
         </plugins>
     </build>
-
-    <!-- OpenCV Java classes are produced by the native CI build and should be supplied by consumers
-         at runtime/compile time as needed. This loader module itself does not compile against OpenCV,
-         so the build intentionally avoids OS-activated system-scope OpenCV dependencies that fail
-         before CI has produced jars/opencv-4100.jar. -->
 </project>
