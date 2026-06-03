@@ -287,8 +287,8 @@ jobs:
           
           # Windows - FIX: copy ALL DLLs including Leptonica
           mkdir -p release/native-lib/windows/x86_64
-          cp all-artifacts/opencv-java-windows/*.dll release/native-lib/windows/x86_64/ 2>/dev/null || true
-          cp all-artifacts/tesseract-native-windows/*.dll release/native-lib/windows/x86_64/ 2>/dev/null || true
+          cp -v all-artifacts/opencv-java-windows/*.dll release/native-lib/windows/x86_64/ 2>/dev/null || true
+          cp -v all-artifacts/tesseract-native-windows/*.dll release/native-lib/windows/x86_64/ 2>/dev/null || true
           
           # macOS - FIX: copy ALL dylibs including Leptonica
           mkdir -p release/native-lib/macos/x86_64

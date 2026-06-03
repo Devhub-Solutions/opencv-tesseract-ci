@@ -151,12 +151,14 @@ fi
 # Copy JNI DLL
 JNI_DLL=$(find "${BUILD_DIR}" -name "opencv_java*.dll" -type f | head -1)
 if [ -n "${JNI_DLL}" ]; then
-    cp "${JNI_DLL}" "${ARTIFACT_DIR}/"
-    echo "Copied JNI DLL: ${JNI_DLL}"
+    # Standardize name for NativeLibraryLoader
+    cp "${JNI_DLL}" "${ARTIFACT_DIR}/libopencv_java4100.dll"
+    echo "Copied JNI DLL: ${JNI_DLL} -> libopencv_java4100.dll"
 else
     echo "WARNING: OpenCV JNI DLL not found, searching alternatives..."
     find "${BUILD_DIR}" -name "*.dll" | head -20
 fi
+
 
 # FIX: Copy all DLL dependencies of the OpenCV JNI DLL
 # On Windows, DLLs are searched in the same directory first, so bundling
