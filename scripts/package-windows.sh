@@ -28,6 +28,7 @@ fi
 echo "--- Tesseract ---"
 if [ -d "${ARTIFACT_DIR}/tesseract" ]; then
     ls -laR "${ARTIFACT_DIR}/tesseract/"
+    # FIX: Copy ALL DLLs including Leptonica and runtime dependencies
     cp "${ARTIFACT_DIR}/tesseract/bin/"*.dll "${ARTIFACT_DIR}/tesseract-upload/" 2>/dev/null || true
     cp "${ARTIFACT_DIR}/tesseract/lib/"*.dll.a "${ARTIFACT_DIR}/tesseract-upload/" 2>/dev/null || true
     cp -r "${ARTIFACT_DIR}/tesseract/include/tesseract" "${ARTIFACT_DIR}/tesseract-upload/" 2>/dev/null || true

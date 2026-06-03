@@ -28,7 +28,9 @@ fi
 echo "--- Tesseract ---"
 if [ -d "${ARTIFACT_DIR}/tesseract" ]; then
     ls -la "${ARTIFACT_DIR}/tesseract/lib/"
+    # FIX: Use *.so* to capture versioned .so files (libtesseract.so.5, liblept.so.5)
     cp "${ARTIFACT_DIR}/tesseract/lib/"*.so* "${ARTIFACT_DIR}/final/native/linux/x86_64/" 2>/dev/null || true
+    cp "${ARTIFACT_DIR}/tesseract/lib/"*.a "${ARTIFACT_DIR}/final/native/linux/x86_64/" 2>/dev/null || true
     cp "${ARTIFACT_DIR}/tesseract/include/"*.h "${ARTIFACT_DIR}/final/headers/" 2>/dev/null || true
     cp -r "${ARTIFACT_DIR}/tesseract/include/tesseract" "${ARTIFACT_DIR}/final/headers/" 2>/dev/null || true
 fi
@@ -48,7 +50,6 @@ mv "${ARTIFACT_DIR}/final/"* "${ARTIFACT_DIR}/"
 rm -rf "${ARTIFACT_DIR}/final"
 
 # Flatten for GitHub Actions upload artifact
-# (artifact action needs files directly in the upload path)
 mkdir -p "${ARTIFACT_DIR}/opencv-upload"
 mkdir -p "${ARTIFACT_DIR}/tesseract-upload"
 
@@ -56,6 +57,7 @@ cp "${ARTIFACT_DIR}/jars/"*.jar "${ARTIFACT_DIR}/opencv-upload/" 2>/dev/null || 
 cp "${ARTIFACT_DIR}/native/linux/x86_64/"libopencv_java*.so "${ARTIFACT_DIR}/opencv-upload/" 2>/dev/null || true
 cp "${ARTIFACT_DIR}/headers/"*.h "${ARTIFACT_DIR}/opencv-upload/" 2>/dev/null || true
 
+# FIX: Copy ALL .so files including versioned ones (libtesseract.so.5, liblept.so.5)
 cp "${ARTIFACT_DIR}/native/linux/x86_64/"libtesseract*.so* "${ARTIFACT_DIR}/tesseract-upload/" 2>/dev/null || true
 cp "${ARTIFACT_DIR}/native/linux/x86_64/"liblept*.so* "${ARTIFACT_DIR}/tesseract-upload/" 2>/dev/null || true
 cp -r "${ARTIFACT_DIR}/headers/tesseract" "${ARTIFACT_DIR}/tesseract-upload/" 2>/dev/null || true

@@ -39,29 +39,31 @@ export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
 export CMAKE_PREFIX_PATH="/usr/local:${CMAKE_PREFIX_PATH:-}"
 
 # Configure with Java support
+# FIX: Added BUILD_SHARED_LIBS=OFF so OpenCV modules are built as static
+# archives and linked into the fat JNI library. Without this flag,
+# BUILD_FAT_JAVA_LIBS=ON still produces a thin wrapper that dynamically
+# depends on individual libopencv_*.so module files.
 cmake "${SOURCE_DIR}/opencv-${OPENCV_VERSION}" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="/usr/local" \
     -DCMAKE_PREFIX_PATH="/usr/local" \
     \
-    `# Java JNI support` \
+    -DBUILD_SHARED_LIBS=OFF \
+    \
     -DBUILD_opencv_java=ON \
     -DBUILD_FAT_JAVA_LIBS=ON \
     \
-    `# Module selection` \
     -DOPENCV_EXTRA_MODULES_PATH="${SOURCE_DIR}/opencv_contrib-${OPENCV_VERSION}/modules" \
     -DBUILD_opencv_python3=OFF \
     -DBUILD_opencv_python2=OFF \
     -DBUILD_opencv_js=OFF \
     \
-    `# Build optimization` \
     -DBUILD_TESTS=OFF \
     -DBUILD_PERF_TESTS=OFF \
     -DBUILD_EXAMPLES=OFF \
     -DBUILD_DOCS=OFF \
     -DBUILD_opencv_apps=OFF \
     \
-    `# Core modules` \
     -DBUILD_opencv_core=ON \
     -DBUILD_opencv_imgproc=ON \
     -DBUILD_opencv_imgcodecs=ON \
@@ -73,7 +75,6 @@ cmake "${SOURCE_DIR}/opencv-${OPENCV_VERSION}" \
     -DBUILD_opencv_calib3d=ON \
     -DBUILD_opencv_text=ON \
     \
-    `# Tesseract integration via opencv_text` \
     -DWITH_TESSERACT=ON \
     -DTesseract_FOUND=TRUE \
     -DTesseract_INCLUDE_DIR="/usr/local/include" \
@@ -82,7 +83,6 @@ cmake "${SOURCE_DIR}/opencv-${OPENCV_VERSION}" \
     -DLept_LIBRARY="/usr/local/lib/libleptonica.so" \
     -DTesseract_LIBRARIES="/usr/local/lib/libtesseract.so;/usr/local/lib/libleptonica.so" \
     \
-    `# Other dependencies` \
     -DWITH_FFMPEG=ON \
     -DWITH_GSTREAMER=OFF \
     -DWITH_GTK=OFF \
@@ -104,6 +104,21 @@ echo "--- Checking Java build output ---"
 ls -la "${BUILD_DIR}/bin/"*.jar 2>/dev/null || echo "JAR not found in bin/"
 ls -la "${BUILD_DIR}/lib/"*java* 2>/dev/null || echo "Java lib not found in lib/"
 find "${BUILD_DIR}" -name "*.jar" -o -name "*java*" 2>/dev/null || true
+
+echo "--- Verifying fat JNI library has no OpenCV module dependencies ---"
+JNI_LIB=$(find "${BUILD_DIR}/lib" -name "libopencv_java*.so" -type f | head -1)
+if [ -n "${JNI_LIB}" ]; then
+    echo "JNI library: ${JNI_LIB}"
+    echo "File size: $(du -h "${JNI_LIB}" | cut -f1)"
+    echo "Dynamic dependencies (should NOT include libopencv_*.so modules):"
+    ldd "${JNI_LIB}" 2>/dev/null || true
+    if ldd "${JNI_LIB}" 2>/dev/null | grep -q "libopencv_"; then
+        echo "WARNING: Fat JNI library still depends on individual OpenCV modules!"
+        ldd "${JNI_LIB}" 2>/dev/null | grep "libopencv_"
+    else
+        echo "SUCCESS: Fat JNI library is self-contained (no libopencv_*.so dependencies)"
+    fi
+fi
 
 # Install
 sudo cmake --install .
@@ -128,7 +143,6 @@ if [ -n "${JNI_LIB}" ]; then
     echo "Copied JNI lib: ${JNI_LIB}"
 else
     echo "WARNING: OpenCV JNI .so not found!"
-    # Fallback: look for the fat java lib
     FAT_LIB=$(find "${BUILD_DIR}" -name "libopencv_java*.so" -type f | head -1)
     if [ -n "${FAT_LIB}" ]; then
         cp "${FAT_LIB}" "${ARTIFACT_DIR}/"
@@ -143,7 +157,6 @@ if [ -d "${HEADER_DIR}" ]; then
     cp -r "${HEADER_DIR}"/*.h "${ARTIFACT_DIR}/include/" 2>/dev/null || true
 fi
 
-# Also copy the generated header from build
 if [ -d "${BUILD_DIR}/opencv_jni_source" ]; then
     cp "${BUILD_DIR}/opencv_jni_source/"*.h "${ARTIFACT_DIR}/include/" 2>/dev/null || true
 fi

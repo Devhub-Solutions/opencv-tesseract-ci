@@ -27,6 +27,7 @@ fi
 echo "--- Tesseract ---"
 if [ -d "${ARTIFACT_DIR}/tesseract" ]; then
     ls -laR "${ARTIFACT_DIR}/tesseract/"
+    # FIX: Copy ALL dylib files including Leptonica (liblept*.dylib)
     cp "${ARTIFACT_DIR}/tesseract/lib/"*.dylib "${ARTIFACT_DIR}/tesseract-upload/" 2>/dev/null || true
     cp -r "${ARTIFACT_DIR}/tesseract/include/tesseract" "${ARTIFACT_DIR}/tesseract-upload/" 2>/dev/null || true
 fi

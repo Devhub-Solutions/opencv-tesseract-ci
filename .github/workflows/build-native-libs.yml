@@ -280,22 +280,22 @@ jobs:
         run: |
           mkdir -p release/native-lib
           
-          # Linux
+          # Linux - FIX: use *.so* for versioned files
           mkdir -p release/native-lib/linux/x86_64
           cp all-artifacts/opencv-java-linux/*.so release/native-lib/linux/x86_64/ 2>/dev/null || true
-          cp all-artifacts/tesseract-native-linux/*.so release/native-lib/linux/x86_64/ 2>/dev/null || true
+          cp all-artifacts/tesseract-native-linux/*.so* release/native-lib/linux/x86_64/ 2>/dev/null || true
           
-          # Windows
+          # Windows - FIX: copy ALL DLLs including Leptonica
           mkdir -p release/native-lib/windows/x86_64
           cp all-artifacts/opencv-java-windows/*.dll release/native-lib/windows/x86_64/ 2>/dev/null || true
           cp all-artifacts/tesseract-native-windows/*.dll release/native-lib/windows/x86_64/ 2>/dev/null || true
           
-          # macOS
+          # macOS - FIX: copy ALL dylibs including Leptonica
           mkdir -p release/native-lib/macos/x86_64
           cp all-artifacts/opencv-java-macos/*.dylib release/native-lib/macos/x86_64/ 2>/dev/null || true
           cp all-artifacts/tesseract-native-macos/*.dylib release/native-lib/macos/x86_64/ 2>/dev/null || true
           
-          # macOS ARM64 (if available from macos-14 runner)
+          # macOS ARM64
           mkdir -p release/native-lib/macos/arm64
           cp all-artifacts/opencv-java-macos-arm64/*.dylib release/native-lib/macos/arm64/ 2>/dev/null || true
           cp all-artifacts/tesseract-native-macos-arm64/*.dylib release/native-lib/macos/arm64/ 2>/dev/null || true
@@ -342,15 +342,17 @@ jobs:
             - **Tesseract OCR**: ${{ env.TESSERACT_VERSION }}
             - **Leptonica**: ${{ env.LEPTONICA_VERSION }}
             
-            ### Supported Platforms
-            | Platform | Architecture | Files |
-            |----------|-------------|-------|
-            | Linux | x86_64 | `.so` |
-            | Windows | x86_64 | `.dll` |
-            | macOS | x86_64 | `.dylib` |
+            ### What's included
+            - `libopencv_java4100.so/.dll/.dylib` - Fat JNI library with all OpenCV modules statically linked
+            - `libtesseract.so/.dll/.dylib` - Tesseract OCR shared library
+            - `liblept.so/.dll/.dylib` - Leptonica shared library (Tesseract dependency)
+            - `opencv-4100.jar` - OpenCV Java bindings
             
             ### Usage
-            Download `native-libs.zip`, extract, and follow the integration guide in README.md
+            ```java
+            // Load Tesseract/Leptonica BEFORE OpenCV (required for opencv_text)
+            NativeLibraryLoader.loadAll(); // loads in correct order
+            ```
           draft: false
           prerelease: false
           files: |

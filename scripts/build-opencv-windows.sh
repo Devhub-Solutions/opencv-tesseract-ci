@@ -37,11 +37,11 @@ echo "Ant path: ${ANT_PATH}"
 if [ ! -d "${SOURCE_DIR}/opencv-${OPENCV_VERSION}" ]; then
     mkdir -p "${SOURCE_DIR}"
     cd "${SOURCE_DIR}"
-    
+
     curl -L "https://github.com/opencv/opencv/archive/${OPENCV_VERSION}.tar.gz" -o opencv.tar.gz
     tar -xzf opencv.tar.gz
     rm opencv.tar.gz
-    
+
     curl -L "https://github.com/opencv/opencv_contrib/archive/${OPENCV_VERSION}.tar.gz" -o opencv_contrib.tar.gz
     tar -xzf opencv_contrib.tar.gz
     rm opencv_contrib.tar.gz
@@ -56,13 +56,15 @@ export PKG_CONFIG_PATH="${INSTALL_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
 export CMAKE_PREFIX_PATH="${INSTALL_PREFIX}:${CMAKE_PREFIX_PATH:-}"
 
 # Configure with Java support
+# FIX: Added BUILD_SHARED_LIBS=OFF for fat JNI library
 cmake "${SOURCE_DIR}/opencv-${OPENCV_VERSION}" \
     "${CMAKE_GENERATOR_ARGS[@]}" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="${INSTALL_PREFIX}" \
     -DCMAKE_PREFIX_PATH="${INSTALL_PREFIX}" \
     \
-    `# Java JNI support` \
+    -DBUILD_SHARED_LIBS=OFF \
+    \
     -DBUILD_opencv_java=ON \
     -DBUILD_FAT_JAVA_LIBS=ON \
     -DJAVA_HOME="${JAVA_HOME_UNIX}" \
@@ -71,19 +73,16 @@ cmake "${SOURCE_DIR}/opencv-${OPENCV_VERSION}" \
     -DJAVA_INCLUDE_PATH2="${JAVA_HOME_UNIX}/include/win32" \
     -DJAVA_JVM_LIBRARY="${JAVA_HOME_UNIX}/lib/server/jvm.dll" \
     \
-    `# Module selection` \
     -DOPENCV_EXTRA_MODULES_PATH="${SOURCE_DIR}/opencv_contrib-${OPENCV_VERSION}/modules" \
     -DBUILD_opencv_python3=OFF \
     -DBUILD_opencv_python2=OFF \
     \
-    `# Build optimization` \
     -DBUILD_TESTS=OFF \
     -DBUILD_PERF_TESTS=OFF \
     -DBUILD_EXAMPLES=OFF \
     -DBUILD_DOCS=OFF \
     -DBUILD_opencv_apps=OFF \
     \
-    `# Core modules` \
     -DBUILD_opencv_core=ON \
     -DBUILD_opencv_imgproc=ON \
     -DBUILD_opencv_imgcodecs=ON \
@@ -95,7 +94,6 @@ cmake "${SOURCE_DIR}/opencv-${OPENCV_VERSION}" \
     -DBUILD_opencv_calib3d=ON \
     -DBUILD_opencv_text=ON \
     \
-    `# Tesseract integration` \
     -DWITH_TESSERACT=ON \
     -DTesseract_FOUND=TRUE \
     -DTesseract_INCLUDE_DIR="${INSTALL_PREFIX}/include" \
@@ -104,7 +102,6 @@ cmake "${SOURCE_DIR}/opencv-${OPENCV_VERSION}" \
     -DLept_LIBRARY="${INSTALL_PREFIX}/lib/libleptonica.dll.a" \
     -DTesseract_LIBRARIES="${INSTALL_PREFIX}/lib/libtesseract.dll.a;${INSTALL_PREFIX}/lib/libleptonica.dll.a" \
     \
-    `# Dependencies` \
     -DWITH_FFMPEG=OFF \
     -DWITH_GTK=OFF \
     -DWITH_V4L=OFF \
@@ -122,6 +119,14 @@ cmake --build . -j$(nproc)
 
 # Install
 cmake --install .
+
+# Verify fat JNI library
+echo "--- Verifying fat JNI DLL ---"
+JNI_DLL_CHECK=$(find "${BUILD_DIR}" -name "opencv_java*.dll" -type f | head -1)
+if [ -n "${JNI_DLL_CHECK}" ]; then
+    echo "JNI DLL: ${JNI_DLL_CHECK}"
+    echo "File size: $(du -h "${JNI_DLL_CHECK}" | cut -f1)"
+fi
 
 # Collect artifacts
 mkdir -p "${ARTIFACT_DIR}"
